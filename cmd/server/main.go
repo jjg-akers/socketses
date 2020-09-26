@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -10,26 +10,38 @@ import (
 
 // using globals for simplicity
 var (
-	clients   = make(map[*websocket.Conn]bool)
-	broadcast = make(chan Message)
+	clients = make(map[*websocket.Conn]bool)
+	// broadcast = make(chan Message)
+	broadcast = make(chan string)
 	upgrader  = websocket.Upgrader{} // used to upgrade normal http connections
 )
 
-type Message struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Message  string `jseon:"message"`
-}
+// type Message struct {
+// 	Type string `json:"type"`
+// 	Key  string `json:"key"`
+// }
+
+var register = make(map[int]*websocket.Conn)
+
+var que = make(map[string][]int)
 
 // HandleMessages reads messages from the broadcast channel and passes to clients
-func handleMessages() {
+func handleMessages(okChan chan PermissionMsg) {
 	for {
+		// 1. wait for message
+		// 2. get the conn for the client id
+		// 3. send ok
+
 		// wait for next message
-		msg := <-broadcast
+		msg := <-okChan
+
+		fmt.Println("got message on broadcast: ", msg)
 
 		// now broadcast that shit!
-		for client := range clients {
+		if client, ok := register[msg.Id]; ok {
 			err := client.WriteJSON(msg)
+
+			//err := client.WriteMessage(websocket.TextMessage, []byte(msg))
 			if err != nil {
 				log.Println("client faile to write json", err)
 
@@ -38,6 +50,18 @@ func handleMessages() {
 				delete(clients, client)
 			}
 		}
+
+		// for client := range clients {
+		// 	//err := client.WriteJSON(msg)
+		// 	err := client.WriteMessage(websocket.TextMessage, []byte(msg))
+		// 	if err != nil {
+		// 		log.Println("client faile to write json", err)
+
+		// 		// for now, if there is an error writing to the client just closs the connection and remove them
+		// 		client.Close()
+		// 		delete(clients, client)
+		// 	}
+		// }
 	}
 
 }
@@ -45,47 +69,28 @@ func handleMessages() {
 // HandleConns will manage incoming websocket connections
 func handleConns(w http.ResponseWriter, r *http.Request) {
 
-	// upgrade the request
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Fatal("upgrader failed ", err)
-	}
-
-	defer ws.Close()
-
-	//Add to ou glocal clients map
-	clients[ws] = true
-
-	// now wait for messages
-	for {
-		var msg Message
-
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			log.Println("Error reading json ", err)
-			break
-		}
-
-		_ := json.Unmarshal(msg)
-		log.Println("message recevied: ", json.Unmarshal(msg))
-
-		// send the message to the broadcast chan
-		broadcast <- msg
-	}
-
 }
+
+var hm = NewKeeper()
 
 func main() {
 
+	go hm.Start()
+	// start the hall monitor
+
 	// setup websocket route
-	http.HandleFunc("/ws", handleConns)
+	//http.HandleFunc("/ws", ConnHandler{Permission: hm.Permission})
+	http.Handle("/ws", &ConnHandler{
+		Permission: hm.Permission,
+		DoneChan:   hm.DoneCh,
+	})
 
 	// start our message handler routine
-	go handleMessages()
+	go handleMessages(hm.OkCh)
 
 	// start servin!
 	log.Println("START YOUR SERVEEEERRRRRS")
-	err := http.ListenAndServe(":8000", nil)
+	err := http.ListenAndServe(":8002", nil)
 	if err != nil {
 		log.Fatal("Listen and serve failed: ", err)
 	}
