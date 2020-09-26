@@ -1,17 +1,17 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"sync"
 
-	"github.com/gorilla/websocket"
+	pb "github.com/jjg-akers/socketses/internal/proto"
+	"google.golang.org/protobuf/proto"
+
 	h "github.com/jjg-akers/socketses/cmd/clientlib/handlers"
 	s "github.com/jjg-akers/socketses/cmd/clientlib/socket"
 	t "github.com/jjg-akers/socketses/internal/types"
@@ -30,16 +30,11 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/ws"}
-	log.Println("Connecting to: ", u.String())
+	// u := url.URL{Scheme: "ws", Host: *addr, Path: "/ws"}
+	// log.Println("Connecting to: ", u.String())
 
-	header := http.Header{}
-	header.Set("id", "1")
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
-	if err != nil {
-		log.Fatal("dial failed ", err)
-	}
-	defer c.Close()
+	// header := http.Header{}
+	// header.Set("id", "1")
 
 	// set up chan
 	done := make(chan struct{})
@@ -47,31 +42,45 @@ func main() {
 
 	// get a SocketMaster
 	sm := &s.SocketMaster{
-		Conn:     c,
 		DoneChan: done,
 		OkChan:   okChan,
 	}
 
+	var id int64 = 123
 	// starte a func to listen for broadcast messages
-	sm.Start()
+	go sm.Start(id, interrupt)
 
 	// start a routine for handling requests
 	permChan := make(chan t.Message, 10)
 
 	go func() {
+		fmt.Println("starting per chan listener")
 
 		// listen for permission requests
 		for msg := range permChan {
 
-			j, err := json.Marshal(msg)
-			if err != nil {
-				fmt.Println("err marsahlling: ", err)
+			protoMsg := pb.Message{
+				Type: msg.Type,
+				Key:  msg.Key,
 			}
-			fmt.Println("got message on perm chan: ", string(j))
+
+			data, err := proto.Marshal(&protoMsg)
+			// j, err := json.Marshal(msg)
+			if err != nil {
+				fmt.Println("err prorto marsahlling: ", err)
+			}
+
+			fmt.Println("sending message on from perm chan: ", protoMsg.String())
 
 			//send to websocket
 			//c.WriteMessage(websocket.TextMessage, []byte(msg))
-			sm.Conn.WriteJSON(msg)
+			//sm.Conn.WriteJSON(msg)
+			data = append(data, '|')
+			i, err := sm.Conn.Write(data)
+			if err != nil {
+				fmt.Println("err sending data from clinent: ", err)
+			}
+			fmt.Printf("worte %d bytes to conn\n", i)
 
 		}
 	}()
@@ -144,6 +153,7 @@ func startServer(wg *sync.WaitGroup, i chan os.Signal, pCh chan t.Message, ok ch
 	}
 
 	go func() {
+		fmt.Println("starting web server")
 		if err := server.ListenAndServe(); err != nil {
 			fmt.Println("Error in HTTP server:", err)
 		}

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"log"
-	"net/http"
-	"strconv"
+	"net"
 
-	t "github.com/jjg-akers/socketses/internal/types"
+	pb "github.com/jjg-akers/socketses/internal/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 type ConnHandler struct {
@@ -14,43 +16,71 @@ type ConnHandler struct {
 	DoneChan   chan PermissionMsg
 }
 
-func (c *ConnHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("startedf websocket conn handler")
-	// get client id
-	id, err := strconv.Atoi(r.Header.Get("id"))
-	if err != nil {
-		log.Fatal("id conversion failed ", err)
+func (c *ConnHandler) HandleConn(conn *net.TCPConn) {
+	fmt.Println("startd conn handler")
+	defer conn.Close()
 
+	// get client id
+	//var b = make([]byte, 8)
+	var id int64
+
+	// n, err := conn.Read(b[:])
+	// if err != nil {
+	// 	log.Println("conn read failed: ", err)
+	// }
+
+	err := binary.Read(conn, binary.LittleEndian, &id)
+	if err != nil {
+		log.Println("binary read failed: ", err)
 	}
+	// id, err := strconv.Atoi(string(id))
+	// if err != nil {
+	// 	log.Fatal("id conversion failed ", err)
+
+	// }
 
 	fmt.Println("got client id: ", id)
 
 	// upgrade the request
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Fatal("upgrader failed ", err)
-	}
-
-	defer ws.Close()
+	// ws, err := upgrader.Upgrade(w, r, nil)
+	// if err != nil {
+	// 	log.Fatal("upgrader failed ", err)
+	// }
 
 	// //Add to ou glocal clients map
 	// clients[ws] = true
 
 	// register the client
-	register[id] = ws
+	register[id] = conn
 
 	// now wait for messages
+	r := bufio.NewReader(conn)
 	for {
-		var msg t.Message
+		msg := pb.Message{}
 		//var msg PermissionMsg
 
-		err := ws.ReadJSON(&msg)
+		data, err := r.ReadBytes('|')
+		if err != nil {
+			//fmt.Println("error reading bytes form buffer")
+			continue
+		}
+
+		fmt.Println("proto data: ", string(data))
+
+		data = data[:len(data)-1]
+		err = proto.Unmarshal(data, &msg)
+		if err != nil {
+			fmt.Println("error unmarshalling proto")
+			continue
+		}
+
+		// err := ws.ReadJSON(&msg)
 		//_, msgBytes, err := ws.ReadMessage()
 
-		if err != nil {
-			log.Println("Error reading socket json ", err)
-			break
-		}
+		// if err != nil {
+		// 	log.Println("Error reading socket json ", err)
+		// 	break
+		// }
 
 		// check type of message
 		if msg.Type == "p" {

@@ -11,7 +11,7 @@ import (
 // a channel to signal its ok to proceed
 type PermissionMsg struct {
 	Key string
-	Id  int
+	Id  int64
 }
 
 type GateKeeper struct {
@@ -31,7 +31,7 @@ func NewKeeper() *GateKeeper {
 func (g *GateKeeper) Start() {
 	log.Println("starting hall monitor")
 
-	register := make(map[string][]int)
+	register := make(map[string][]int64)
 
 	//start listing to channels
 	for {
@@ -52,7 +52,7 @@ func (g *GateKeeper) Start() {
 
 				// its not in use,
 				// register the key and send ok msg
-				register[permMsg.Key] = []int{}
+				register[permMsg.Key] = []int64{}
 
 				g.OkCh <- permMsg
 			}
