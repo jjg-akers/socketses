@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+
+	t "github.com/jjg-akers/socketses/internal/types"
 )
 
 //This will use a slice to maintain maintain chronological order
@@ -14,15 +16,21 @@ type PermissionMsg struct {
 	Id  int64
 }
 
+type DoneMsg struct {
+	Key    string
+	Id     int64
+	Update t.CacheUpdate
+}
+
 type GateKeeper struct {
-	DoneCh     chan PermissionMsg
+	DoneCh     chan DoneMsg
 	OkCh       chan PermissionMsg
 	Permission chan PermissionMsg
 }
 
 func NewKeeper() *GateKeeper {
 	return &GateKeeper{
-		DoneCh:     make(chan PermissionMsg, 10),
+		DoneCh:     make(chan DoneMsg, 10),
 		OkCh:       make(chan PermissionMsg, 10),
 		Permission: make(chan PermissionMsg, 10),
 	}

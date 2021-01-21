@@ -2,7 +2,7 @@ syntax = 'proto3';
 
 package message;
 
-message Message {
+message Register {
     string type = 1;
-    string key = 2;
+    int64 id = 2;
 }

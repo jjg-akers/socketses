@@ -1,0 +1,12 @@
+syntax = 'proto3';
+
+package message;
+
+import "key.proto";
+import "cacheUpdate.proto";
+
+message Permission {
+    Key key = 1;
+    CacheUpdate cacheUpdate = 2;
+}
+

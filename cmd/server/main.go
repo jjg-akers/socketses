@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	pb "github.com/jjg-akers/socketses/internal/proto"
+	t "github.com/jjg-akers/socketses/internal/types"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -26,6 +27,7 @@ var (
 // }
 
 var register = make(map[int64]*net.TCPConn)
+var updateRegister = make(map[int64]*net.TCPConn)
 
 var que = make(map[string][]int64)
 
@@ -38,15 +40,80 @@ func handleMessages(okChan chan PermissionMsg) {
 
 		// wait for next message
 		msg := <-okChan
-		protoMsg := pb.Message{
-			Type: "ok",
-			Key:  msg.Key,
+		protoMsg := pb.Permission{
+			Key: &pb.Key{
+				Key:  msg.Key,
+				Type: "ok",
+			},
 		}
 
 		fmt.Println("got message on broadcast: ", msg)
 
 		// now broadcast that shit!
 		if client, ok := register[msg.Id]; ok {
+			msgBytes, err := proto.Marshal(&protoMsg)
+			if err != nil {
+				log.Println("error marshalling proto n", err)
+				continue
+			}
+
+			msgBytes = append(msgBytes, '|')
+
+			i, err := client.Write(msgBytes)
+			if err != nil {
+				log.Println("could not write bytes to conn", err)
+
+				client.Close()
+				delete(clients, client)
+			}
+
+			fmt.Println("number of bytes writting: ", i)
+
+			// err := client.WriteJSON(msg)
+
+			// //err := client.WriteMessage(websocket.TextMessage, []byte(msg))
+			// if err != nil {
+			// 	log.Println("client faile to write json", err)
+
+			// 	// for now, if there is an error writing to the client just closs the connection and remove them
+			// 	client.Close()
+			// 	delete(clients, client)
+			// }
+		}
+
+		// for client := range clients {
+		// 	//err := client.WriteJSON(msg)
+		// 	err := client.WriteMessage(websocket.TextMessage, []byte(msg))
+		// 	if err != nil {
+		// 		log.Println("client faile to write json", err)
+
+		// 		// for now, if there is an error writing to the client just closs the connection and remove them
+		// 		client.Close()
+		// 		delete(clients, client)
+		// 	}
+		// }
+	}
+
+}
+
+func handleUpdateMessages(updateChan chan t.CacheUpdate) {
+	for {
+		// 1. wait for message
+		// 2. get the conn for the client id
+		// 3. send ok
+
+		// wait for next message
+		msg := <-updateChan
+		protoMsg := pb.CacheUpdate{
+			Key:        msg.Key,
+			Value:      msg.Value,
+			Expiration: msg.Expiration,
+		}
+
+		fmt.Println("got message on update handler: ", msg)
+
+		// now broadcast that shit!
+		for _, client := range updateRegister {
 			msgBytes, err := proto.Marshal(&protoMsg)
 			if err != nil {
 				log.Println("error marshalling proto n", err)
@@ -120,7 +187,7 @@ func main() {
 
 }
 
-func startServer(wg *sync.WaitGroup, p chan PermissionMsg, d chan PermissionMsg) {
+func startServer(wg *sync.WaitGroup, p chan PermissionMsg, d chan DoneMsg) {
 
 	addr, err := net.ResolveTCPAddr("tcp", ":8002")
 	if err != nil {

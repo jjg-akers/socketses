@@ -1,0 +1,10 @@
+syntax = 'proto3';
+
+package message;
+
+message CacheUpdate {
+    string key = 1;
+    map<string, string> value = 2;
+    int64 expiration = 3;
+    
+}

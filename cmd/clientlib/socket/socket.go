@@ -13,23 +13,19 @@ import (
 )
 
 type SocketMaster struct {
-	Conn     *net.TCPConn
-	DoneChan chan struct{}
-	OkChan   chan string
+	PermissionConn *net.TCPConn
+	UpdateConn     *net.TCPConn
+	DoneChan       chan struct{}
+	OkChan         chan string
 }
 
 func (s *SocketMaster) Start(id int64, interupt chan os.Signal) {
 	fmt.Println("starting socketmastter")
-	addr, err := net.ResolveTCPAddr("tcp", ":8002")
+
+	conn, err := getConn("tcp", ":8002")
 	if err != nil {
 		log.Fatal("Failed to create tcp addr: ", err)
 	}
-	conn, err := net.DialTCP("tcp", nil, addr)
-	//c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
-	if err != nil {
-		log.Fatal("dial failed ", err)
-	}
-
 	// send id before we send other messages
 	err = binary.Write(conn, binary.LittleEndian, id)
 	//err := binary.Read(conn, binary.LittleEndian, &id)
@@ -38,8 +34,25 @@ func (s *SocketMaster) Start(id int64, interupt chan os.Signal) {
 	}
 
 	defer conn.Close()
-	s.Conn = conn
+	s.PermissionConn = conn
 	s.Listen(interupt)
+}
+
+func getConn(network string, address string) (*net.TCPConn, error) {
+	addr, err := net.ResolveTCPAddr("tcp", ":8002")
+	if err != nil {
+		return nil, err
+		// log.Fatal("Failed to create tcp addr: ", err)
+	}
+	conn, err := net.DialTCP("tcp", nil, addr)
+	//c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	if err != nil {
+		// log.Fatal("dial failed ", err)
+		return nil, err
+	}
+
+	return conn, nil
+
 }
 
 // starts a func to listen for broadcast messages
@@ -56,7 +69,7 @@ func (s *SocketMaster) Listen(interupt chan os.Signal) {
 			return
 		default:
 
-			msg := pb.Message{}
+			msg := pb.Permission{}
 			//var msg PermissionMsg
 
 			data, err := r.ReadBytes('|')
@@ -74,7 +87,7 @@ func (s *SocketMaster) Listen(interupt chan os.Signal) {
 
 			fmt.Println("got message: ", msg.GetKey())
 
-			s.OkChan <- string(msg.GetKey())
+			s.OkChan <- string(msg.GetKey().Key)
 		}
 	}
 }

@@ -1,0 +1,8 @@
+syntax = 'proto3';
+
+package message;
+
+message Key {
+    string type = 1;
+    string key = 2;
+}
